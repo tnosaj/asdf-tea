@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-# TODO: Ensure this is the correct GitHub homepage where releases can be downloaded for tea.
-GH_REPO="https://gitea.com/gitea/tea"
+TOOL_REPO="https://gitea.com/gitea/tea"
+GITEA_API="https://gitea.com/api/v1/repos/gitea/tea"
 TOOL_NAME="tea"
 TOOL_TEST="tea --version"
 
@@ -14,38 +14,52 @@ fail() {
 
 curl_opts=(-fsSL)
 
-# NOTE: You might want to remove this if tea is not hosted on GitHub releases.
-if [ -n "${GITHUB_API_TOKEN:-}" ]; then
-	curl_opts=("${curl_opts[@]}" -H "Authorization: token $GITHUB_API_TOKEN")
-fi
-
 sort_versions() {
 	sed 'h; s/[+-]/./g; s/.p\([[:digit:]]\)/.z\1/; s/$/.z/; G; s/\n/ /' |
 		LC_ALL=C sort -t. -k 1,1 -k 2,2n -k 3,3n -k 4,4n -k 5,5n | awk '{print $2}'
 }
 
-list_github_tags() {
-	git ls-remote --tags --refs "$GH_REPO" |
-		grep -o 'refs/tags/.*' | cut -d/ -f3- |
-		sed 's/^v//' # NOTE: You might want to adapt this sed to remove non-version strings from tags
+get_platform() {
+	local os arch
+	os=$(uname -s | tr '[:upper:]' '[:lower:]')
+	arch=$(uname -m)
+	case "$arch" in
+	x86_64) arch="amd64" ;;
+	aarch64 | arm64) arch="arm64" ;;
+	armv7l) arch="arm-7" ;;
+	armv6l) arch="arm-6" ;;
+	armv5*) arch="arm-5" ;;
+	*) fail "Unsupported architecture: $arch" ;;
+	esac
+	echo "${os}-${arch}"
+}
+
+list_gitea_releases() {
+	local page=1
+	while true; do
+		local response tags
+		response=$(curl "${curl_opts[@]}" "${GITEA_API}/releases?limit=50&page=${page}")
+		tags=$(echo "$response" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"v\?//;s/"//' || true)
+		[ -z "$tags" ] && break
+		echo "$tags"
+		page=$((page + 1))
+	done
 }
 
 list_all_versions() {
-	# TODO: Adapt this. By default we simply list the tag names from GitHub releases.
-	# Change this function if tea has other means of determining installable versions.
-	list_github_tags
+	list_gitea_releases
 }
 
 download_release() {
-	local version filename url
+	local version filename url platform
 	version="$1"
 	filename="$2"
+	platform=$(get_platform)
 
-	# TODO: Adapt the release URL convention for tea
-	url="$GH_REPO/archive/v${version}.tar.gz"
+	url="${TOOL_REPO}/releases/download/v${version}/tea-${version}-${platform}"
 
 	echo "* Downloading $TOOL_NAME release $version..."
-	curl "${curl_opts[@]}" -o "$filename" -C - "$url" || fail "Could not download $url"
+	curl "${curl_opts[@]}" -o "$filename" "$url" || fail "Could not download $url"
 }
 
 install_version() {
@@ -61,7 +75,6 @@ install_version() {
 		mkdir -p "$install_path"
 		cp -r "$ASDF_DOWNLOAD_PATH"/* "$install_path"
 
-		# TODO: Assert tea executable exists.
 		local tool_cmd
 		tool_cmd="$(echo "$TOOL_TEST" | cut -d' ' -f1)"
 		test -x "$install_path/$tool_cmd" || fail "Expected $install_path/$tool_cmd to be executable."
