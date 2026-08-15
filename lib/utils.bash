@@ -39,7 +39,7 @@ list_gitea_releases() {
 	while true; do
 		local response tags
 		response=$(curl "${curl_opts[@]}" "${GITEA_API}/releases?limit=50&page=${page}")
-		tags=$(echo "$response" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"v\?//;s/"//' || true)
+		tags=$(echo "$response" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//;s/^v//;s/"//' || true)
 		[ -z "$tags" ] && break
 		echo "$tags"
 		page=$((page + 1))

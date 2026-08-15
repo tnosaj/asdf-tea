@@ -9,4 +9,4 @@ plugin_dir=$(dirname "$(dirname "$current_script_path")")
 . "${plugin_dir}/lib/utils.bash"
 
 curl "${curl_opts[@]}" "${GITEA_API}/releases/latest" |
-	grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"v\?//;s/"//' | head -1
+	grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//;s/^v//;s/"//' | head -1
